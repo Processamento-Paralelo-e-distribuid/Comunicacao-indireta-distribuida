@@ -45,11 +45,25 @@ def getChallenge(transactionID):
         return transaction["Challenge"].values[0]
     else:
         return -1
-def setChallenge(transictionID, challenger):
+def setChallenge(challenger):
+    try:
+        df = pd.read_csv(arquivo)
+    except:
+        return -1
     
-    return
+    transactionID = getTransactionID()
+    trasition = df.query("TransactionID == "+str(transactionID))    
+    
+    if(trasition.empty == True):
+        return -1
+    
+    trasition.loc[transactionID,"Challenge"] = challenger
+    df.iloc[transactionID,:] = trasition.iloc[0,:]
+    
+    df.to_csv(arquivo, index=False)
+    
 def main():
-    qtd_usuarios = 2
+    qtd_usuarios = 1
     chairman = None
     usuarios, election = [], []
     id = time.time()
@@ -59,7 +73,7 @@ def main():
             
             #Sala completa
             if(len(usuarios) == qtd_usuarios):
-                channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = str(random.randint(0,9)))
+                channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = str(random.randint(0,qtd_usuarios-1)))
                 
     def callback2(ch, method, properties, body):
         if(len(election) != qtd_usuarios):
@@ -67,15 +81,83 @@ def main():
         if(len(election) == qtd_usuarios):
             chairman = sum(election)%qtd_usuarios
             # verifica se o proprio usuario é o prefeito e publica o challenger gerado
-            if(usuarios[chairman] == id):
+            if(usuarios[chairman] == str(id)):
                 trasactionID    = getTransactionID() # Cria a transação
                 challenger      = getChallenge(trasactionID)
                 channel.basic_publish(exchange = '', routing_key = 'ppd/challenge', body = str(challenger))
                 
     def callback3(ch, method, properties, body):
-        challenger      = int(body.decode()) # Pega challenger anunciado 
-        trasactionID    = getTransactionID() # Cria a transação
-        setChallenge(trasactionID, challenger)
+        challenger = int(body.decode()) # Pega challenger anunciado
+        setChallenge(challenger)
+        
+        seed = []
+
+        # Buscar, localmente, uma seed (semente) que solucione o desafio proposto
+        flag = True
+
+        def verificaSEED(hash, challenger):
+            for i in range(0,40):
+                ini_string = hash[i]
+                scale = 16
+                res = bin(int(ini_string, scale)).zfill(4)
+                res = str(res)
+                for k in range(len(res)):
+                    if(res[k] == "b"):
+                        res = "0"*(4-len(res[k+1:]))+res[k+1:]
+                        break
+
+                for j in range (0, 4):
+                    if(challenger == 0):
+                        if(res[j] != "0"):
+                            return 1
+                        else:
+                            return -1
+                    if(res[j] == "0"):
+                        challenger = challenger - 1
+                    else:
+                        return -1
+            return -1
+
+        def random_generator(size=6, n=1, chars=string.printable): # Gera string aleatória
+            random.seed(n)
+            return ''.join(random.choice(chars) for _ in range(size))
+
+        def getSeed(challenger, seed, size): # Gera seed
+            n = 0
+            while(flag):
+                seedTemp = random_generator(size, n)
+                texto = str(seedTemp).encode('utf-8')
+                hash = sha1(texto).hexdigest()
+                
+                if(verificaSEED(hash, challenger) == 1):
+                    seed.append(seedTemp)
+                    break
+                n = n + 1
+
+        multThread = []
+
+        for i in range(1,challenger*2+1):
+            thread = threading.Thread(target=getSeed, args=(challenger, seed, i, ))
+            multThread.append(thread)
+            thread.start()
+            
+            if(len(seed) > 0):
+                flag = False
+                break   
+
+        while(True):
+            if(len(seed) != 0):
+                break
+
+        flag = False
+
+        # Verifica se todas as threads acabaram 
+        for thread in multThread:
+            thread.join()
+            
+        #enviar resposta para server
+        cod_seed = str(id)+'/'+str(seed[0])
+        channel.basic_publish(exchange = '', routing_key = 'ppd/seed', body = cod_seed)
         
     connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
     channel = connection.channel()
@@ -84,8 +166,8 @@ def main():
     channel.queue_declare(queue = 'ppd/WRoom')      # assina/publica - Sala de Espera
     channel.queue_declare(queue = 'ppd/election')   # assina/publica - Eleção do presidente
     channel.queue_declare(queue = 'ppd/challenge')  # assina/publica
+    channel.queue_declare(queue = 'ppd/seed')       # assina/publica
     
-    #channel.queue_declare(queue = 'ppd/seed')       #publica
     #channel.queue_declare(queue = 'ppd/result')     #assina
     
     # Fila de Espera
@@ -96,8 +178,8 @@ def main():
     channel.basic_consume(queue = 'ppd/election' , on_message_callback = callback2, auto_ack = True)
     
     # Challenger
-    channel.basic_consume(queue = 'ppd/election' , on_message_callback = callback3, auto_ack = True)
-        
+    channel.basic_consume(queue = 'ppd/challenge' , on_message_callback = callback3, auto_ack = True)
+    
     channel.start_consuming()
 
 if __name__ == '__main__':

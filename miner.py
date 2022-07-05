@@ -10,18 +10,20 @@ global arquivo
 arquivo = 'banco-de-dados.csv'
 
 def main():
+    
     server = {
     'host': 'localhost',
     'port': 5672,
     'user': 'guest',
     'pass': 'guest',
     }
+    
     qtd_usuarios = 2
     chairman = None
     usuarios, election = [], []
     id = time.time()
-    #credentials = pika.PlainCredentials(self.conf['server']['user'], self.conf['server']['pass'])
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
+    credentials = pika.PlainCredentials(server['user'], server['pass'])
+    connection = pika.BlockingConnection(pika.ConnectionParameters(server['host'],server['port'],credentials=credentials))
     channel = connection.channel()
     channel.queue_declare(queue = 'ppd/WRoom')  # assina/publica
     channel.queue_declare(queue = 'ppd/election')  # assina/publica
@@ -63,26 +65,3 @@ if __name__ == '__main__':
 #def getChallenge(transactionID):
 #def verificaSEED(hash, challenger):
 #def submitChallenge(transactionID, ClientID, seed):
-
-#def queue(name, server):
-#    conf = defaults['queue']
-#    conf['server'] = server
-#   return Queue(name, conf)
-
-#defaults = {
-#    'queue': {
-#        'queue': {
-#            'passive': False,
-#            'durable': True,
-#            'exclusive': False,
-#            'autoDelete': False,
-#            'nowait': False
-#        },
-#        'consumer': {
-#            'noLocal': False,
-#            'noAck': False,
-#            'exclusive': False,
-#            'nowait': False
-#        }
-#    }
-#}

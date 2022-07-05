@@ -10,36 +10,43 @@ global arquivo
 arquivo = 'banco-de-dados.csv'
 
 def main():
+    server = {
+    'host': 'localhost',
+    'port': 5672,
+    'user': 'guest',
+    'pass': 'guest',
+    }
     qtd_usuarios = 2
     chairman = None
     usuarios, election = [], []
     id = time.time()
-    def callback(ch, method, properties, body):
+    #credentials = pika.PlainCredentials(self.conf['server']['user'], self.conf['server']['pass'])
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
+    channel = connection.channel()
+    channel.queue_declare(queue = 'ppd/WRoom')  # assina/publica
+    channel.queue_declare(queue = 'ppd/election')  # assina/publica
+
+    def callback(ch, method, properties, body):    
+        
         if(len(usuarios) != qtd_usuarios):
-            usuarios.append(body.decode())
-            
+            usuarios.append(body.decode())    
             #Sala completa
             if(len(usuarios) == qtd_usuarios):                
                 channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = str(random.randint(0,9)))
                 
     def callback2(ch, method, properties, body):
+        
         if(len(election) != qtd_usuarios):
             election.append(int(body.decode()))
         print(election)
         if(len(election) == qtd_usuarios):
             chairman = sum(election)%qtd_usuarios
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
-    channel = connection.channel()
 
     # Verifica se a lista esta completa
-    channel.queue_declare(queue = 'ppd/WRoom')  # assina/publica
-    channel.queue_declare(queue = 'ppd/election')  # assina/publica
     
     channel.basic_publish(exchange = '', routing_key = 'ppd/WRoom', body = str(id))
     channel.basic_consume(queue = 'ppd/WRoom' , on_message_callback = callback, auto_ack = True)
-    
     channel.basic_consume(queue = 'ppd/election' , on_message_callback = callback2, auto_ack = True)
-    
     channel.start_consuming()
 
 if __name__ == '__main__':
@@ -56,3 +63,26 @@ if __name__ == '__main__':
 #def getChallenge(transactionID):
 #def verificaSEED(hash, challenger):
 #def submitChallenge(transactionID, ClientID, seed):
+
+#def queue(name, server):
+#    conf = defaults['queue']
+#    conf['server'] = server
+#   return Queue(name, conf)
+
+#defaults = {
+#    'queue': {
+#        'queue': {
+#            'passive': False,
+#            'durable': True,
+#            'exclusive': False,
+#            'autoDelete': False,
+#            'nowait': False
+#        },
+#        'consumer': {
+#            'noLocal': False,
+#            'noAck': False,
+#            'exclusive': False,
+#            'nowait': False
+#        }
+#    }
+#}

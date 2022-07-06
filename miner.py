@@ -17,15 +17,15 @@ def getTransactionID():
     transactionID = 0
         
     if(df is None):
-        lista = {"TransactionID":[0], "Challenge":[random.randint(1,5)], "Seed":[" "], "Winner": [-1]}
+        lista = {"TransactionID":[0], "Challenge":[random.randint(1,128)], "Seed":[" "], "Winner": [-1]}
         df = pd.DataFrame(lista)
     else:
         tam = len(df.iloc[:, 0])
-        if(df.iloc[tam-1, 3]):
+        if(df.iloc[tam-1, 3] == -1):
             return df.iloc[tam-1, 0]
         else:
             transactionID = df.iloc[(tam-1), 0]+1
-            lista = {"TransactionID":[0], "Challenge":[random.randint(1,5)], "Seed":[" "], "Winner": [-1]}
+            lista = {"TransactionID":transactionID, "Challenge":[random.randint(1,128)], "Seed":[" "], "Winner": [-1]}
             transaction = pd.DataFrame(lista)
 
             df = pd.concat([df,transaction], ignore_index = True)
@@ -94,6 +94,7 @@ def main():
                 trasactionID    = getTransactionID() # Cria a transação
                 challenger      = getChallenge(trasactionID)
                 channel.basic_publish(exchange = '', routing_key = 'ppd/challenge', body = str(challenger))
+            election.clear()
                 
     def callback3(ch, method, properties, body):
         def setChallenge(challenger):
@@ -216,13 +217,18 @@ def main():
                 trasition = df.query("TransactionID == "+str(transactionID))  
                 
                 trasition.loc[transactionID,"Seed"]   = votacao[0][1]
-                trasition.loc[transactionID,"Winner"] = votacao[0][0]
+                trasition.loc[transactionID,"Winner"] = float(votacao[0][0])
                 
                 df.iloc[transactionID,:] = trasition.iloc[0,:]
                 
                 df.to_csv(arquivo, index=False)
-            else:
-                votacao.clear()
+                
+                chairman = usuarios.index(votacao[0][0])
+            if(usuarios[chairman] == str(id)):
+                trasactionID    = getTransactionID()
+                challenger      = getChallenge(trasactionID)
+                channel.basic_publish(exchange = '', routing_key = 'ppd/challenge', body = str(challenger))
+            votacao.clear()
 
     connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
     channel = connection.channel()

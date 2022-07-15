@@ -46,13 +46,15 @@ def getChallenge(transactionID):
         return transaction["Challenge"].values[0]
     else:
         return -1
+
 def setChallenge(challenger):
+    transactionID = getTransactionID()
+    
     try:
         df = pd.read_csv(arquivo)
     except:
         return -1
     
-    transactionID = getTransactionID()
     trasition = df.query("TransactionID == "+str(transactionID))    
     
     if(trasition.empty == True):
@@ -65,10 +67,9 @@ def setChallenge(challenger):
     
 def main():
     qtd_usuarios = 3
-    chairman = None
     id = time.time()
-    cadastro = None
-    usuarios, election = [], []
+    usuarios, election, chairman = [], [], []
+    
     def callback(ch, method, properties, body):
         temp = body.decode()
         if(len(usuarios)<qtd_usuarios):
@@ -80,6 +81,7 @@ def main():
             channel.basic_publish(exchange = '', routing_key = 'ppd/WRoom', body = temp)
             
             if(len(usuarios)==qtd_usuarios):
+                usuarios.sort()
                 aux = str(id)+"/"+str(random.randint(0,qtd_usuarios-1))
                 print(aux)
                 channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = aux)
@@ -108,13 +110,13 @@ def main():
                         election.append("/".join(temp))
                     
                     if(len(election) == qtd_usuarios):
-                        chairman = 0
+                        eleito = 0
                         for voto in election:
-                            chairman = chairman + int(voto[1])
-                        chairman = chairman%qtd_usuarios
+                            eleito = eleito + int(voto[1])
+                        chairman.append(eleito%qtd_usuarios)
                         print(chairman)
                         # verifica se o proprio usuario é o prefeito e publica o challenger gerado
-                        if(usuarios[chairman] == str(id)):
+                        if(usuarios[chairman[0]] == str(id)):
                             trasactionID    = getTransactionID() # Cria a transação
                             challenger      = getChallenge(trasactionID)
                             channel.basic_publish(exchange = '', routing_key = 'ppd/challenge', body = str(challenger))
@@ -127,7 +129,11 @@ def main():
             channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = "/".join(temp))
             
     def callback3(ch, method, properties, body):
-        challenger = int(body.decode()) # Pega challenger anunciado
+        temp = body.decode()
+        challenger = int(temp) # Pega challenger anunciado
+        
+        channel.basic_publish(exchange = '', routing_key = 'ppd/challenge', body = temp)
+
         setChallenge(challenger)
         
         seed = []
@@ -219,7 +225,7 @@ def main():
     channel.basic_consume(queue = 'ppd/election' , on_message_callback = callback2, auto_ack = True)
     
     # Challenger
-    #channel.basic_consume(queue = 'ppd/challenge' , on_message_callback = callback3, auto_ack = True)
+    channel.basic_consume(queue = 'ppd/challenge' , on_message_callback = callback3, auto_ack = True)
     channel.start_consuming()
     
 
@@ -232,6 +238,3 @@ if __name__ == '__main__':
         sys.exit(0)
     except SystemExit:
         os._exit(0)
-
-#def verificaSEED(hash, challenger):
-#def submitChallenge(transactionID, ClientID, seed):

@@ -1,3 +1,5 @@
+from html import entities
+from numpy import char
 import pandas as pd
 import pika, sys, os
 import threading
@@ -63,29 +65,68 @@ def setChallenge(challenger):
     df.to_csv(arquivo, index=False)
     
 def main():
-    qtd_usuarios = 1
+    qtd_usuarios = 3
     chairman = None
-    usuarios, election = [], []
     id = time.time()
+    cadastro = None
+    usuarios, election = [], []
     def callback(ch, method, properties, body):
-        if(len(usuarios) != qtd_usuarios):
-            usuarios.append(body.decode())
+        temp = body.decode()
+        if(len(usuarios)<qtd_usuarios):
+            try:
+                if(usuarios.index(temp) >= 0):
+                    pass
+            except:
+                usuarios.append(temp)
+            channel.basic_publish(exchange = '', routing_key = 'ppd/WRoom', body = temp)
             
-            #Sala completa
-            if(len(usuarios) == qtd_usuarios):
-                channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = str(random.randint(0,qtd_usuarios-1)))
-                
+            if(len(usuarios)==qtd_usuarios):
+                aux = str(id)+"/"+str(random.randint(0,qtd_usuarios-1))
+                print(aux)
+                channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = aux)
+        else:
+            try:
+                if(usuarios.index(temp) >= 0):
+                    channel.basic_publish(exchange = '', routing_key = 'ppd/WRoom', body = temp)
+            except:
+                pass
+            
+            try:
+                if(usuarios.index(str(id)) >= 0):
+                    channel.basic_publish(exchange = '', routing_key = 'ppd/WRoom', body = temp)
+            except:
+                exit(0)
+            
     def callback2(ch, method, properties, body):
-        if(len(election) != qtd_usuarios):
-            election.append(int(body.decode()))
-        if(len(election) == qtd_usuarios):
-            chairman = sum(election)%qtd_usuarios
-            # verifica se o proprio usuario é o prefeito e publica o challenger gerado
-            if(usuarios[chairman] == str(id)):
-                trasactionID    = getTransactionID() # Cria a transação
-                challenger      = getChallenge(trasactionID)
-                channel.basic_publish(exchange = '', routing_key = 'ppd/challenge', body = str(challenger))
-                
+        temp = body.decode().split("/")
+        if(len(usuarios) == qtd_usuarios):
+            try:
+                if(usuarios.index(temp[0]) >= 0 and len(election) < qtd_usuarios):
+                    try:
+                        if(election.index("/".join(temp))>= 0):
+                            pass
+                    except:
+                        election.append("/".join(temp))
+                    
+                    if(len(election) == qtd_usuarios):
+                        chairman = 0
+                        for voto in election:
+                            chairman = chairman + int(voto[1])
+                        chairman = chairman%qtd_usuarios
+                        print(chairman)
+                        # verifica se o proprio usuario é o prefeito e publica o challenger gerado
+                        if(usuarios[chairman] == str(id)):
+                            trasactionID    = getTransactionID() # Cria a transação
+                            challenger      = getChallenge(trasactionID)
+                            channel.basic_publish(exchange = '', routing_key = 'ppd/challenge', body = str(challenger))
+                    channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = "/".join(temp))
+                else:
+                    channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = "/".join(temp))
+            except:
+                pass
+        else:
+            channel.basic_publish(exchange = '', routing_key = 'ppd/election', body = "/".join(temp))
+            
     def callback3(ch, method, properties, body):
         challenger = int(body.decode()) # Pega challenger anunciado
         setChallenge(challenger)
@@ -168,19 +209,20 @@ def main():
     channel.queue_declare(queue = 'ppd/challenge')  # assina/publica
     channel.queue_declare(queue = 'ppd/seed')       # assina/publica
     
-    #channel.queue_declare(queue = 'ppd/result')     #assina
+    channel.queue_declare(queue = 'ppd/result')     # assina
     
-    # Fila de Espera
-    channel.basic_publish(exchange = '', routing_key = 'ppd/WRoom', body = str(id))
+    # Sala de Espera
+    print(id)
     channel.basic_consume(queue = 'ppd/WRoom' , on_message_callback = callback, auto_ack = True)
+    channel.basic_publish(exchange = '', routing_key = 'ppd/WRoom', body = str(id))
     
     # Eleição
     channel.basic_consume(queue = 'ppd/election' , on_message_callback = callback2, auto_ack = True)
     
     # Challenger
-    channel.basic_consume(queue = 'ppd/challenge' , on_message_callback = callback3, auto_ack = True)
-    
+    #channel.basic_consume(queue = 'ppd/challenge' , on_message_callback = callback3, auto_ack = True)
     channel.start_consuming()
+    
 
 if __name__ == '__main__':
     try:

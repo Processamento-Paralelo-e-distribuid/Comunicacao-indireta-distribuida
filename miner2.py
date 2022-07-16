@@ -74,7 +74,7 @@ def main():
     id = 2#time.time()
     
     chairman = None
-    usuarios, election, votacao = [], [], []
+    usuarios, eleicao, votacao = [], [], []
     
     def callback(ch, method, properties, body):
         if(len(usuarios) != qtd_usuarios):
@@ -86,16 +86,17 @@ def main():
                 print(usuarios)
 
     def callback2(ch, method, properties, body):
-        if(len(election) != qtd_usuarios):
-            election.append(int(body.decode()))
-        if(len(election) == qtd_usuarios):
-            chairman = sum(election)%qtd_usuarios
+        if(len(eleicao) != qtd_usuarios):
+            eleicao.append(int(body.decode()))
+        if(len(eleicao) == qtd_usuarios):
+            chairman = sum(eleicao)%qtd_usuarios
             # verifica se o proprio usuario é o prefeito e publica o challenger gerado
+            print(chairman)
             if(usuarios[chairman] == str(id)):
                 trasactionID    = getTransactionID() # Cria a transação
                 challenger      = getChallenge(trasactionID)
                 channel.basic_publish(exchange = 'Challenge', routing_key = '', body = str(challenger))
-            election.clear()
+            eleicao.clear()
                 
     def callback3(ch, method, properties, body):
         def setChallenge(challenger):
@@ -236,26 +237,26 @@ def main():
     connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
     channel = connection.channel()
 
-    """
-    result = channel.queue_declare(queue='rsv/helloo3', exclusive=False)
-    channel.queue_bind(exchange='teste1', queue=result.method.queue)
-    #channel.exchange_declare(exchange='teste1', exchange_type='fanout')
-    channel.basic_publish(exchange='teste1', routing_key='', body='Hello ##3!')
-
-    channel.basic_consume(queue='rsv/helloo3', on_message_callback=callback, auto_ack=True)
-    channel.start_consuming()
-    """
     # Verifica se a lista esta completa
     channel.exchange_declare(exchange='WRoom', exchange_type='fanout')
-    result = channel.queue_declare(queue = 'ppd/WRoom/1')      # assina/publica - Sala de Espera
-    channel.queue_bind(exchange='WRoom', queue=result.method.queue)
+    room = channel.queue_declare(queue = 'ppd/WRoom/1')      # assina/publica - Sala de Espera
+    channel.queue_bind(exchange='WRoom', queue=room.method.queue)
 
+    channel.exchange_declare(exchange='Election', exchange_type='fanout')
+    election = channel.queue_declare(queue = 'ppd/election/1')      # assina/publica - Eleção do presidente
+    channel.queue_bind(exchange='Election', queue=election.method.queue)
 
-    channel.queue_declare(queue = 'ppd/election/1')   # assina/publica - Eleção do presidente
-    channel.queue_declare(queue = 'ppd/challenge/1')  # assina/publica - Desafio da transição atual
-    channel.queue_declare(queue = 'ppd/seed/1')       # assina/publica - Verificação da seed que resolve desafio
-    channel.queue_declare(queue = 'ppd/result/1')     # assina/publica - Lista de votação na seed que soluciona o desafio
-    
+    channel.exchange_declare(exchange='Challenge', exchange_type='fanout')
+    challenge = channel.queue_declare(queue = 'ppd/challenge/1')     # assina/publica - Desafio da transição atual
+    channel.queue_bind(exchange='Challenge', queue=challenge.method.queue)
+
+    channel.exchange_declare(exchange='Seed', exchange_type='fanout')
+    seed = channel.queue_declare(queue = 'ppd/seed/1')     # assina/publica - Verificação da seed que resolve desafio
+    channel.queue_bind(exchange='Seed', queue=seed.method.queue)
+
+    channel.exchange_declare(exchange='Result', exchange_type='fanout')
+    result = channel.queue_declare(queue = 'ppd/result/1')     # assina/publica - Lista de votação na seed que soluciona o desafio
+    channel.queue_bind(exchange='Result', queue=result.method.queue)
     # Fila de Espera
     channel.basic_publish(exchange = 'WRoom', routing_key = '', body = str(id))
     channel.basic_consume(queue = 'ppd/WRoom/1' , on_message_callback = callback, auto_ack = True)

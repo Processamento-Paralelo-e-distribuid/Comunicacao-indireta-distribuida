@@ -213,6 +213,7 @@ def main():
         if(len(votacao) != qtd_usuarios):
             votacao.append(body.decode().split("/"))
         if(len(votacao) == qtd_usuarios):
+            print(votacao)
             chairman = 0
             if(verificaVotacao(votacao)):
                 try:
@@ -223,7 +224,6 @@ def main():
                 aux = df.query("TransactionID ==" + votacao[0][2])
                 if(aux["Winner"].values[0] == -1):
                     transactionID = getTransactionID()
-                    print(transactionID)
                     
                     trasition = df.query("TransactionID == "+str(transactionID))  
                     

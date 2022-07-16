@@ -223,7 +223,6 @@ def main():
                 aux = df.query("TransactionID ==" + votacao[0][2])
                 if(aux["Winner"].values[0] == -1):
                     transactionID = getTransactionID()
-                    print(transactionID)
                     
                     trasition = df.query("TransactionID == "+str(transactionID))  
                     

@@ -17,7 +17,7 @@ def getTransactionID():
     transactionID = 0
         
     if(df is None):
-        lista = {"TransactionID":[0], "Challenge":[random.randint(1,128)], "Seed":[" "], "Winner": [-1]}
+        lista = {"TransactionID":[0], "Challenge":[random.randint(1,7)], "Seed":[" "], "Winner": [-1]}
         df = pd.DataFrame(lista)
     else:
         tam = len(df.iloc[:, 0])
@@ -25,7 +25,7 @@ def getTransactionID():
             return df.iloc[tam-1, 0]
         else:
             transactionID = df.iloc[(tam-1), 0]+1
-            lista = {"TransactionID":transactionID, "Challenge":[random.randint(1,128)], "Seed":[" "], "Winner": [-1]}
+            lista = {"TransactionID":transactionID, "Challenge":[random.randint(1,7)], "Seed":[" "], "Winner": [-1]}
             transaction = pd.DataFrame(lista)
 
             df = pd.concat([df,transaction], ignore_index = True)
@@ -70,41 +70,43 @@ def verificaSEED(hash, challenger):
             return -1
 
 def main():
-    qtd_usuarios = 10
-    id = 3#time.time()
+    qtd_usuarios = 2
+    id = time.time()
     
-    chairman = None
-    usuarios, election, votacao = [], [], []
+    usuarios, eleitos, votacao = [], [], []
+    
+    numero = "2"
     
     def callback(ch, method, properties, body):
         if(len(usuarios) != qtd_usuarios):
             usuarios.append(body.decode())
-            
+
             #Sala completa
             if(len(usuarios) == qtd_usuarios):
                 channel.basic_publish(exchange = 'Election', routing_key = '', body = str(random.randint(0,qtd_usuarios-1)))
                 print(usuarios)
 
     def callback2(ch, method, properties, body):
-        if(len(election) != qtd_usuarios):
-            election.append(int(body.decode()))
-        if(len(election) == qtd_usuarios):
-            chairman = sum(election)%qtd_usuarios
+        if(len(eleitos) != qtd_usuarios):
+            eleitos.append(int(body.decode()))
+        if(len(eleitos) == qtd_usuarios):
+            chairman = sum(eleitos)%qtd_usuarios
+            print(chairman)
             # verifica se o proprio usuario é o prefeito e publica o challenger gerado
             if(usuarios[chairman] == str(id)):
                 trasactionID    = getTransactionID() # Cria a transação
                 challenger      = getChallenge(trasactionID)
                 channel.basic_publish(exchange = 'Challenge', routing_key = '', body = str(challenger))
-            election.clear()
+            eleitos.clear()
                 
     def callback3(ch, method, properties, body):
         def setChallenge(challenger):
+            transactionID = getTransactionID()
             try:
                 df = pd.read_csv(arquivo)
             except:
                 return -1
             
-            transactionID = getTransactionID()
             trasition = df.query("TransactionID == "+str(transactionID))    
             
             if(trasition.empty == True):
@@ -117,7 +119,7 @@ def main():
             
         challenger = int(body.decode()) # Pega challenger anunciado
         setChallenge(challenger)
-        
+
         seed = []
 
         # Buscar, localmente, uma seed (semente) que solucione o desafio proposto
@@ -162,6 +164,7 @@ def main():
             
         #enviar resposta para server
         cod_seed = str(id)+'/'+str(seed[0])
+        print(cod_seed)
         channel.basic_publish(exchange = 'Seed', routing_key = '', body = cod_seed)
         
     def callback4(ch, method, properties, body):
@@ -189,9 +192,7 @@ def main():
                 return 0
             
         lista = body.decode().split("/")
-        
-        print("....."+lista[0]+lista[1]) #tirar
-
+                
         result = False                       # Erro, não resolve desafio ou desafio solucionado
         if(submitChallenge(lista[1]) == 1):  # Resolve desafio
             result = True
@@ -210,6 +211,7 @@ def main():
         if(len(votacao) != qtd_usuarios):
             votacao.append(body.decode().split("/"))
         if(len(votacao) == qtd_usuarios):
+            chairman = 0
             if(verificaVotacao(votacao)):
                 try:
                     df = pd.read_csv(arquivo)
@@ -227,50 +229,57 @@ def main():
                 df.to_csv(arquivo, index=False)
                 
                 chairman = usuarios.index(votacao[0][0])
+            
+            print(chairman)
             if(usuarios[chairman] == str(id)):
                 trasactionID    = getTransactionID()
+                time.sleep(10)
                 challenger      = getChallenge(trasactionID)
                 channel.basic_publish(exchange = 'Challenge', routing_key = '', body = str(challenger))
+            
             votacao.clear()
     
     connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
     channel = connection.channel()
 
-    """
-    result = channel.queue_declare(queue='rsv/helloo3', exclusive=False)
-    channel.queue_bind(exchange='teste1', queue=result.method.queue)
-    #channel.exchange_declare(exchange='teste1', exchange_type='fanout')
-    channel.basic_publish(exchange='teste1', routing_key='', body='Hello ##3!')
+    print(id)
 
-    channel.basic_consume(queue='rsv/helloo3', on_message_callback=callback, auto_ack=True)
-    channel.start_consuming()
-    """
     # Verifica se a lista esta completa
     channel.exchange_declare(exchange='WRoom', exchange_type='fanout')
-    result = channel.queue_declare(queue = 'ppd/WRoom/3')      # assina/publica - Sala de Espera
-    channel.queue_bind(exchange='WRoom', queue=result.method.queue)
+    room = channel.queue_declare(queue = 'ppd/WRoom/'+numero)      # assina/publica - Sala de Espera
+    channel.queue_bind(exchange='WRoom', queue=room.method.queue)
 
+    channel.exchange_declare(exchange='Election', exchange_type='fanout')
+    election = channel.queue_declare(queue = 'ppd/election/'+numero)      # assina/publica - Eleção do presidente
+    channel.queue_bind(exchange='Election', queue=election.method.queue)
 
-    channel.queue_declare(queue = 'ppd/election/3')   # assina/publica - Eleção do presidente
-    channel.queue_declare(queue = 'ppd/challenge/3')  # assina/publica - Desafio da transição atual
-    channel.queue_declare(queue = 'ppd/seed/3')       # assina/publica - Verificação da seed que resolve desafio
-    channel.queue_declare(queue = 'ppd/result/3')     # assina/publica - Lista de votação na seed que soluciona o desafio
+    channel.exchange_declare(exchange='Challenge', exchange_type='fanout')
+    challenge = channel.queue_declare(queue = 'ppd/challenge/'+numero)     # assina/publica - Desafio da transição atual
+    channel.queue_bind(exchange='Challenge', queue=challenge.method.queue)
+
+    channel.exchange_declare(exchange='Seed', exchange_type='fanout')
+    seed = channel.queue_declare(queue = 'ppd/seed/'+numero)     # assina/publica - Verificação da seed que resolve desafio
+    channel.queue_bind(exchange='Seed', queue=seed.method.queue)
+
+    channel.exchange_declare(exchange='Result', exchange_type='fanout')
+    result = channel.queue_declare(queue = 'ppd/result/'+numero)     # assina/publica - Lista de votação na seed que soluciona o desafio
+    channel.queue_bind(exchange='Result', queue=result.method.queue)
     
     # Fila de Espera
     channel.basic_publish(exchange = 'WRoom', routing_key = '', body = str(id))
-    channel.basic_consume(queue = 'ppd/WRoom/3' , on_message_callback = callback, auto_ack = True)
+    channel.basic_consume(queue = 'ppd/WRoom/'+numero , on_message_callback = callback, auto_ack = True)
     
     # Eleição
-    channel.basic_consume(queue = 'ppd/election/3' , on_message_callback = callback2, auto_ack = True)
+    channel.basic_consume(queue = 'ppd/election/'+numero , on_message_callback = callback2, auto_ack = True)
     
     # Challenger
-    channel.basic_consume(queue = 'ppd/challenge/3' , on_message_callback = callback3, auto_ack = True)
+    channel.basic_consume(queue = 'ppd/challenge/'+numero , on_message_callback = callback3, auto_ack = True)
     
     # Seed
-    channel.basic_consume(queue = 'ppd/seed/3' , on_message_callback = callback4, auto_ack = True)
+    channel.basic_consume(queue = 'ppd/seed/'+numero , on_message_callback = callback4, auto_ack = True)
     
     # Resultado
-    channel.basic_consume(queue = 'ppd/result/3' , on_message_callback = callback5, auto_ack = True)
+    channel.basic_consume(queue = 'ppd/result/'+numero , on_message_callback = callback5, auto_ack = True)
     
     
     channel.start_consuming()

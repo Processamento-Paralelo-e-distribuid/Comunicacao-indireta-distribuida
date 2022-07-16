@@ -192,13 +192,20 @@ def main():
                 return 1
             else:
                 return 0
-            
+        
         lista = body.decode().split("/")
-                
-        result = False                       # Erro, não resolve desafio ou desafio solucionado
-        if(submitChallenge(lista[1]) == 1):  # Resolve desafio
-            result = True
-        channel.basic_publish(exchange = 'Result', routing_key = '', body = body.decode()+"/"+str(result))
+        
+        try:
+            df = pd.read_csv(arquivo)
+        except:
+            return -1 
+        
+        aux = df.query("TransactionID ==" + lista[2])
+        if(aux["Winner"].values[0] == -1):
+            result = False                       # Erro, não resolve desafio ou desafio solucionado
+            if(submitChallenge(lista[1]) == 1):  # Resolve desafio
+                result = True
+            channel.basic_publish(exchange = 'Result', routing_key = '', body = body.decode()+"/"+str(result))
         
     def callback5(ch, method, properties, body):
         def verificaVotacao(votacao):
@@ -238,6 +245,7 @@ def main():
                     return
             
             print(chairman)
+            channel.queue_purge('ppd/result/'+numero)
             if(usuarios[chairman] == str(id)):
                 trasactionID    = getTransactionID()
                 challenger      = getChallenge(trasactionID)

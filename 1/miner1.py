@@ -15,7 +15,7 @@ def getTransactionID():
     except:
         df = None
     transactionID = 0
-        
+    
     if(df is None):
         lista = {"TransactionID":[0], "Challenge":[random.randint(1,7)], "Seed":[" "], "Winner": [-1]}
         df = pd.DataFrame(lista)
@@ -96,7 +96,7 @@ def main():
             if(usuarios[chairman] == str(id)):
                 trasactionID    = getTransactionID() # Cria a transação
                 challenger      = getChallenge(trasactionID)
-                channel.basic_publish(exchange = 'Challenge', routing_key = '', body = str(challenger))
+                channel.basic_publish(exchange = 'Challenge', routing_key = '', body = str(challenger)+'/'+str(trasactionID))
             eleitos.clear()
                 
     def callback3(ch, method, properties, body):
@@ -116,8 +116,10 @@ def main():
             df.iloc[transactionID,:] = trasition.iloc[0,:]
             
             df.to_csv(arquivo, index=False)
-            
-        challenger = int(body.decode()) # Pega challenger anunciado
+        
+        temp = body.decode().split("/")
+        challenger      = int(temp[0]) # Pega challenger anunciado
+        trasictionID    = int(temp[1])
         setChallenge(challenger)
 
         seed = []
@@ -163,7 +165,7 @@ def main():
             thread.join()
             
         #enviar resposta para server
-        cod_seed = str(id)+'/'+str(seed[0])
+        cod_seed = str(id)+'/'+str(seed[0]+'/'+str(trasictionID))
         print(cod_seed)
         channel.basic_publish(exchange = 'Seed', routing_key = '', body = cod_seed)
         
@@ -216,25 +218,30 @@ def main():
                 try:
                     df = pd.read_csv(arquivo)
                 except:
-                    return -1
+                    return -1 
                 
-                transactionID = getTransactionID() 
-                trasition = df.query("TransactionID == "+str(transactionID))  
-                
-                trasition.loc[transactionID,"Seed"]   = votacao[0][1]
-                trasition.loc[transactionID,"Winner"] = float(votacao[0][0])
-                
-                df.iloc[transactionID,:] = trasition.iloc[0,:]
-                
-                df.to_csv(arquivo, index=False)
-                chairman = usuarios.index(votacao[0][0])
+                aux = df.query("TransactionID ==" + votacao[0][2])
+                if(aux["Winner"].values[0] == -1):
+                    transactionID = getTransactionID()
+                    print(transactionID)
+                    
+                    trasition = df.query("TransactionID == "+str(transactionID))  
+                    
+                    trasition.loc[transactionID,"Seed"]   = votacao[0][1]
+                    trasition.loc[transactionID,"Winner"] = float(votacao[0][0])
+                    
+                    df.iloc[transactionID,:] = trasition.iloc[0,:]
+                    
+                    df.to_csv(arquivo, index=False)
+                    chairman = usuarios.index(votacao[0][0])
+                else:
+                    return
             
             print(chairman)
             if(usuarios[chairman] == str(id)):
                 trasactionID    = getTransactionID()
-                time.sleep(10)
                 challenger      = getChallenge(trasactionID)
-                channel.basic_publish(exchange = 'Challenge', routing_key = '', body = str(challenger))
+                channel.basic_publish(exchange = 'Challenge', routing_key = '', body = str(challenger)+'/'+str(trasactionID))
             
             votacao.clear()
     
